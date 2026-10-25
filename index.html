@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>StudyTracker Pro - 勉強時間管理</title>
+  
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/pwa-192x192.png" type="image/png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="StudyTracker">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+    }
+    @media (max-width: 768px) {
+      main {
+        padding-bottom: 95px !important;
+      }
+    }
+    /* iPhoneのノッチ・ステータスバー分の余白をヘッダーに吸収させ、
+       本文側には余計な隙間ができないようにする */
+    header.md\:hidden {
+      padding-top: env(safe-area-inset-top, 0px);
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col md:flex-row relative overflow-x-hidden">
+
+  <!-- Sidebar Navigation (Desktop Only) -->
+  <aside class="hidden md:flex w-64 bg-slate-900 text-slate-100 flex-shrink-0 flex-col justify-between p-4 shadow-lg h-screen sticky top-0 z-20">
+    <div>
+      <div class="flex items-center gap-3 px-2 py-4 border-b border-slate-800">
+        <div class="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center overflow-hidden flex-shrink-0 relative">
+          <img src="./study_timer.png" alt="Logo" class="w-full h-full object-cover">
+        </div>
+        <div>
+          <h1 class="font-bold text-lg leading-tight">StudyTracker</h1>
+          <span class="text-xs text-indigo-400 font-medium">Pro Dashboard</span>
+        </div>
+      </div>
+
+      <nav class="mt-6 flex flex-col gap-1">
+        <button onclick="switchTab('timer')" id="nav-timer" class="nav-btn flex items-center gap-3 px-4 py-3 rounded-xl transition font-medium bg-indigo-600 text-white">
+          <i data-lucide="timer" class="w-5 h-5"></i>
+          <span>タイマー / 計測</span>
+        </button>
+        <button onclick="switchTab('problem')" id="nav-problem" class="nav-btn flex items-center gap-3 px-4 py-3 rounded-xl transition font-medium text-slate-400 hover:text-slate-100 hover:bg-slate-800">
+          <i data-lucide="timer" class="w-5 h-5"></i>
+          <span>問題演習タイマー</span>
+        </button>
+        <button onclick="switchTab('todos')" id="nav-todos" class="nav-btn flex items-center gap-3 px-4 py-3 rounded-xl transition font-medium text-slate-400 hover:text-slate-100 hover:bg-slate-800">
+          <i data-lucide="check-square" class="w-5 h-5"></i>
+          <span>ToDoリスト</span>
+        </button>
+        <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-btn flex items-center gap-3 px-4 py-3 rounded-xl transition font-medium text-slate-400 hover:text-slate-100 hover:bg-slate-800">
+          <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+          <span>ダッシュボード</span>
+        </button>
+        <button onclick="switchTab('history')" id="nav-history" class="nav-btn flex items-center gap-3 px-4 py-3 rounded-xl transition font-medium text-slate-400 hover:text-slate-100 hover:bg-slate-800">
+          <i data-lucide="history" class="w-5 h-5"></i>
+          <span>学習履歴</span>
+        </button>
+        <button onclick="switchTab('subjects')" id="nav-subjects" class="nav-btn flex items-center gap-3 px-4 py-3 rounded-xl transition font-medium text-slate-400 hover:text-slate-100 hover:bg-slate-800">
+          <i data-lucide="folder-kanban" class="w-5 h-5"></i>
+          <span>科目・目標設定</span>
+        </button>
+      </nav>
+
+      <!-- PWA Install Button (Desktop) -->
+      <button id="pwa-install-btn-desktop" onclick="handlePWAInstallClick()" class="hidden mt-4 w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white text-xs font-semibold shadow-md transition transform active:scale-95">
+        <i data-lucide="download" class="w-4 h-4"></i>
+        <span>アプリをインストール</span>
+      </button>
+    </div>
+
+    <!-- Daily Quick Summary & Live Clock -->
+    <div class="bg-slate-800/60 rounded-xl p-4 border border-slate-700/50 mt-6 space-y-3">
+      <div>
+        <div class="text-xs text-slate-400 font-medium mb-1">本日の学習時間</div>
+        <div class="text-2xl font-bold text-indigo-300" id="sidebar-today-time">0h 0m</div>
+        <div class="w-full bg-slate-700 h-2 rounded-full mt-2 overflow-hidden">
+          <div id="sidebar-goal-bar" class="bg-indigo-500 h-full w-0 transition-all duration-300"></div>
+        </div>
+        <div class="text-[10px] text-slate-400 mt-1 text-right" id="sidebar-goal-text">目標: 0時間</div>
+      </div>
+
+      <div class="pt-3 border-t border-slate-700/60 text-center">
+        <div class="text-[11px] text-slate-400 font-medium" id="sidebar-date-text">2026年 8月6日 (木)</div>
+        <div class="text-sm font-mono font-bold text-slate-200 mt-0.5" id="sidebar-clock-text">12:00:00</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Mobile Header Bar -->
+  <header class="md:hidden bg-slate-900 text-white px-4 py-2.5 flex flex-col gap-1.5 sticky top-0 z-30 shadow-md">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="w-7 h-7 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center overflow-hidden">
+          <img src="./study_timer.png" alt="Logo" class="w-full h-full object-cover">
+        </div>
+        <span class="font-bold text-sm">StudyTracker</span>
+      </div>
+      <div class="flex items-center gap-2.5">
+        <button id="pwa-install-btn-mobile" onclick="handlePWAInstallClick()" class="hidden bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1 shadow-sm">
+          <i data-lucide="download" class="w-3.5 h-3.5"></i>
+          <span>インストール</span>
+        </button>
+        <div class="text-right">
+          <div class="text-[10px] text-indigo-300 font-medium" id="mobile-sidebar-date-text">8/7(金)</div>
+          <div class="text-xs font-mono font-bold" id="mobile-sidebar-clock-text">12:00:00</div>
+        </div>
+      </div>
+    </div>
+    <div class="bg-slate-800 px-3 py-1.5 rounded-lg flex items-center justify-between text-xs">
+      <span class="text-slate-400 text-[11px]">本日の学習: <strong class="text-indigo-300" id="mobile-sidebar-today-time">0h 0m</strong></span>
+      <span class="text-slate-400 text-[10px]" id="mobile-sidebar-goal-text">目標 0h</span>
+    </div>
+  </header>
+
+  <!-- Main Content Area -->
+  <main class="flex-1 p-4 md:p-8 overflow-y-auto max-w-7xl mx-auto w-full md:h-screen">
+
+    <!-- TAB 1: TIMER & LOGGING -->
+    <section id="tab-timer" class="space-y-6">
+      <header>
+        <h2 class="text-2xl font-bold text-slate-900">学習タイマー</h2>
+        <p class="text-slate-500 text-sm">集中して勉強を開始しましょう</p>
+      </header>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Main Timer Card -->
+        <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-200/80 p-6 md:p-8 flex flex-col items-center justify-center">
+          
+          <!-- Mode Selector -->
+          <div class="flex flex-wrap justify-center gap-1.5 bg-slate-100 p-1 rounded-xl mb-6 text-sm font-medium">
+            <button id="mode-stopwatch-btn" onclick="setTimerMode('stopwatch')" class="px-3.5 py-2 rounded-lg transition bg-white shadow-sm text-indigo-600">ストップウォッチ</button>
+            <button id="mode-timer-btn" onclick="setTimerMode('timer')" class="px-3.5 py-2 rounded-lg transition text-slate-600">タイマー</button>
+            <button id="mode-alarm-btn" onclick="setTimerMode('alarm')" class="px-3.5 py-2 rounded-lg transition text-slate-600">時刻アラーム</button>
+            <button id="mode-pomodoro-btn" onclick="setTimerMode('pomodoro')" class="px-3.5 py-2 rounded-lg transition text-slate-600">ポモドーロ</button>
+          </div>
+
+          <!-- Normal Timer Settings Panel -->
+          <div id="normal-timer-panel" class="hidden mb-4 bg-slate-50 border border-slate-200 p-3 rounded-xl flex items-center justify-center gap-2 text-xs">
+            <span class="font-semibold text-slate-600">カウントダウン時間:</span>
+            <input type="number" id="normal-minutes-input" min="1" max="300" value="30" class="w-16 bg-white border border-slate-200 rounded-lg p-1.5 text-center font-bold" onchange="updateNormalTimerInitial()">分
+          </div>
+
+          <!-- Time Alarm Settings Panel -->
+          <div id="alarm-timer-panel" class="hidden mb-4 bg-slate-50 border border-slate-200 p-3 rounded-xl flex items-center justify-center gap-2 text-xs">
+            <span class="font-semibold text-slate-600"><i data-lucide="alarm-clock" class="w-4 h-4 inline mr-1 text-indigo-600"></i>終了時刻を指定:</span>
+            <input type="time" id="target-time-input" class="bg-white border border-slate-200 rounded-lg p-1.5 text-center font-bold text-sm" onchange="updateAlarmTimerTarget()">
+          </div>
+
+          <!-- Pomodoro Settings Panel -->
+          <div id="pomodoro-settings-panel" class="hidden mb-4 bg-slate-50 border border-slate-200 p-3 rounded-xl flex flex-wrap items-center justify-center gap-3 text-xs">
+            <div class="flex items-center gap-1.5">
+              <span class="font-semibold text-slate-600">集中:</span>
+              <input type="number" id="pomo-work-input" min="1" max="180" value="25" class="w-14 bg-white border border-slate-200 rounded-lg p-1.5 text-center font-bold" onchange="updatePomodoroInitial()">分
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="font-semibold text-slate-600">休憩:</span>
+              <input type="number" id="pomo-break-input" min="1" max="60" value="5" class="w-14 bg-white border border-slate-200 rounded-lg p-1.5 text-center font-bold">分
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="font-semibold text-slate-600">セット数:</span>
+              <input type="number" id="pomo-sets-input" min="1" max="20" value="4" class="w-14 bg-white border border-slate-200 rounded-lg p-1.5 text-center font-bold">回
+            </div>
+            <button onclick="applyPomodoroSettings()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3 py-1.5 rounded-lg transition">適用</button>
+          </div>
+
+          <!-- Status Indicator for Loop Timers -->
+          <div id="timer-loop-status" class="hidden mb-4 text-xs font-bold px-3 py-1 rounded-full bg-indigo-100 text-indigo-700">
+            🔥 集中タイム (1 / 4セット)
+          </div>
+
+          <!-- Active Task Notice -->
+          <div id="active-task-banner" class="hidden mb-4 bg-indigo-50 border border-indigo-100 text-indigo-800 text-xs px-4 py-2 rounded-lg flex items-center justify-between w-full max-w-xs">
+            <span class="truncate"><strong class="font-semibold">実行中タスク:</strong> <span id="active-task-title"></span></span>
+            <button onclick="clearActiveTask()" class="text-indigo-500 hover:text-indigo-700 ml-2 font-bold">&times;</button>
+          </div>
+
+          <!-- Subject Choice for Current Timer -->
+          <div class="w-full max-w-xs mb-6">
+            <label class="block text-xs font-semibold text-slate-500 mb-2 text-center uppercase tracking-wider">学習科目 / 休憩を選択</label>
+            <select id="timer-subject-select" onchange="handleTimerSubjectChange(this.value)" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm rounded-xl p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer">
+              <!-- Dynamically populated -->
+            </select>
+          </div>
+
+          <!-- Timer Display -->
+          <div class="relative flex items-center justify-center my-2">
+            <div class="text-6xl md:text-8xl font-black tracking-tight font-mono text-slate-800 select-none" id="timer-display">
+              00:00:00
+            </div>
+          </div>
+
+          <!-- Lap / Subject Breakdown Display Panel -->
+          <div id="lap-panel" class="w-full max-w-md mt-6 bg-slate-50 border border-slate-200 rounded-xl p-4 hidden">
+            <div class="flex items-center justify-between mb-2 pb-2 border-b border-slate-200 text-xs font-semibold text-slate-500">
+              <span>科目別ラップ内訳</span>
+              <span>経過時間</span>
+            </div>
+            <div id="lap-list" class="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- Controls -->
+          <div class="flex flex-wrap items-center justify-center gap-3 mt-8">
+            <button id="start-btn" onclick="startTimer()" class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-8 py-3.5 rounded-xl shadow-lg shadow-indigo-200 transition active:scale-95">
+              <i data-lucide="play" class="w-5 h-5 fill-current"></i> 開始
+            </button>
+            <button id="pause-btn" onclick="pauseTimer()" class="hidden flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white font-semibold px-8 py-3.5 rounded-xl shadow-lg shadow-amber-100 transition active:scale-95">
+              <i data-lucide="pause" class="w-5 h-5 fill-current"></i> 一時停止
+            </button>
+            <button id="reset-btn" onclick="resetTimer()" class="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold px-5 py-3.5 rounded-xl transition">
+              <i data-lucide="rotate-ccw" class="w-5 h-5"></i> リセット
+            </button>
+            <button id="save-btn" onclick="saveTimerSession()" disabled class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-6 py-3.5 rounded-xl shadow-lg shadow-emerald-100 transition active:scale-95 opacity-50 cursor-not-allowed">
+              <i data-lucide="check" class="w-5 h-5"></i> 保存
+            </button>
+          </div>
+        </div>
+
+        <!-- Manual Entry Box -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-6 flex flex-col justify-between">
+          <div>
+            <h3 class="font-bold text-lg text-slate-800 mb-1 flex items-center gap-2">
+              <i data-lucide="pen-tool" class="w-5 h-5 text-indigo-500"></i> 手動で記録を追加
+            </h3>
+            <p class="text-xs text-slate-500 mb-4">タイマーを使わずに学習時間を入力できます</p>
+
+            <form id="manual-form" onsubmit="handleManualSubmit(event)" class="space-y-4">
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">科目</label>
+                <select id="manual-subject" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" required></select>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">日付</label>
+                <input type="date" id="manual-date" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" required>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 mb-1">時間 (時)</label>
+                  <input type="number" id="manual-hours" min="0" max="24" value="0" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 mb-1">時間 (分)</label>
+                  <input type="number" id="manual-minutes" min="0" max="59" value="30" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" required>
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">メモ (任意)</label>
+                <input type="text" id="manual-note" placeholder="例: P.45 - P.60 / 復習" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+              </div>
+              <button type="submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-3 rounded-xl transition text-sm flex items-center justify-center gap-2">
+                <i data-lucide="plus-circle" class="w-4 h-4"></i> 記録を保存
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB: PROBLEM STOPWATCH -->
+    <section id="tab-problem" class="space-y-6 hidden">
+      <header class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-2xl font-bold text-slate-900">問題演習ストップウォッチ</h2>
+          <p class="text-slate-500 text-sm">問題ごとのタイム計測と科目別履歴の管理</p>
+        </div>
+        <div class="bg-slate-200/80 p-1 rounded-xl flex text-xs font-medium">
+          <button id="prob-subtab-timer-btn" onclick="setProblemSubTab('timer')" class="px-4 py-2 rounded-lg transition bg-white text-indigo-600 shadow-sm font-semibold">
+            <i data-lucide="timer" class="w-4 h-4 inline mr-1"></i>タイマー計測
+          </button>
+          <button id="prob-subtab-history-btn" onclick="setProblemSubTab('history')" class="px-4 py-2 rounded-lg transition text-slate-600">
+            <i data-lucide="history" class="w-4 h-4 inline mr-1"></i>演習履歴・検索
+          </button>
+        </div>
+      </header>
+
+      <div id="prob-subtab-timer-content" class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-6 md:p-8 max-w-2xl mx-auto flex flex-col items-center justify-center space-y-6">
+        <div class="w-full space-y-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">科目</label>
+              <select id="prob-subject-select" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" required></select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">問題名 / 大問名</label>
+              <input type="text" id="problem-name-input" placeholder="例: 数学 確率の大問3" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+            </div>
+          </div>
+
+          <div id="problem-compare-banner" class="hidden bg-indigo-50 border border-indigo-100 text-indigo-900 p-3 rounded-xl text-xs">
+            <div class="font-bold mb-0.5">📊 前回との比較</div>
+            <div id="problem-compare-text">-</div>
+          </div>
+
+          <div class="text-center font-mono font-black text-6xl md:text-7xl text-slate-800 py-8 bg-slate-50 rounded-2xl border border-slate-100 select-none" id="problem-display">
+            00:00:00
+          </div>
+
+          <div class="flex items-center justify-center gap-4 pt-2">
+            <button id="prob-start-btn" onclick="startProblemTimer()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-8 py-3.5 rounded-xl text-sm transition flex items-center gap-2 shadow-lg shadow-indigo-200 active:scale-95">
+              <i data-lucide="play" class="w-5 h-5 fill-current"></i> スタート
+            </button>
+            <button id="prob-pause-btn" onclick="pauseProblemTimer()" class="hidden bg-amber-500 hover:bg-amber-600 text-white font-semibold px-8 py-3.5 rounded-xl text-sm transition flex items-center gap-2 shadow-lg shadow-amber-100 active:scale-95">
+              <i data-lucide="pause" class="w-5 h-5 fill-current"></i> 一時停止
+            </button>
+            <button onclick="saveProblemRecord()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-6 py-3.5 rounded-xl text-sm transition flex items-center gap-2 shadow-lg shadow-emerald-100 active:scale-95">
+              <i data-lucide="save" class="w-5 h-5"></i> 保存
+            </button>
+            <button onclick="resetProblemTimer()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 px-5 py-3.5 rounded-xl text-sm transition">
+              <i data-lucide="rotate-ccw" class="w-5 h-5"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="prob-subtab-history-content" class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-6 hidden space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <h3 class="font-bold text-lg text-slate-800 flex items-center gap-2">
+            <i data-lucide="search" class="w-5 h-5 text-indigo-500"></i> 科目別絞り込み & 問題名検索
+          </h3>
+          <div class="flex flex-wrap items-center gap-2">
+            <select id="prob-filter-subject" onchange="renderProblemHistory()" class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-700 focus:outline-none">
+              <option value="all">すべての科目</option>
+            </select>
+            <input type="text" id="prob-search-input" oninput="renderProblemHistory()" placeholder="問題名で検索..." class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500">
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm text-slate-600">
+            <thead class="bg-slate-50 text-xs text-slate-400 uppercase font-semibold border-b border-slate-200">
+              <tr>
+                <th class="py-3 px-4">日付</th>
+                <th class="py-3 px-4">科目</th>
+                <th class="py-3 px-4">問題名</th>
+                <th class="py-3 px-4">タイム</th>
+                <th class="py-3 px-4 text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody id="problem-history-tbody" class="divide-y divide-slate-100">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+        <div id="problem-history-empty" class="p-8 text-center text-slate-400 text-sm hidden">
+          条件に一致する演習履歴はありません。
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: TODO LIST & SCHEDULE -->
+    <section id="tab-todos" class="space-y-6 hidden">
+      <header class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-2xl font-bold text-slate-900">ToDoリスト & スケジュール</h2>
+          <p class="text-slate-500 text-sm">タスクの期間設定、カレンダー確認、円グラフによる24時間スケジュール</p>
+        </div>
+        
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="bg-slate-200/80 p-1 rounded-xl flex text-xs font-medium">
+            <button id="todo-view-list-btn" onclick="setTodoViewMode('list')" class="px-3 py-1.5 rounded-lg transition bg-white text-indigo-600 shadow-sm font-semibold">
+              <i data-lucide="list" class="w-4 h-4 inline mr-1"></i>タスク一覧
+            </button>
+            <button id="todo-view-schedule-btn" onclick="setTodoViewMode('schedule')" class="px-3 py-1.5 rounded-lg transition text-slate-600">
+              <i data-lucide="pie-chart" class="w-4 h-4 inline mr-1"></i>円グラフスケジュール
+            </button>
+            <button id="todo-view-calendar-btn" onclick="setTodoViewMode('calendar')" class="px-3 py-1.5 rounded-lg transition text-slate-600">
+              <i data-lucide="calendar" class="w-4 h-4 inline mr-1"></i>カレンダー
+            </button>
+          </div>
+
+          <div class="bg-white border border-slate-200/80 px-4 py-2 rounded-xl shadow-sm flex items-center gap-3">
+            <i data-lucide="check-circle2" class="w-5 h-5 text-indigo-600"></i>
+            <div>
+              <div class="text-[10px] text-slate-500 font-medium">本日の達成タスク</div>
+              <div class="text-xs font-bold text-slate-800" id="todo-progress-text">0 / 0 完了 (0%)</div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Left Column: Dynamic Form Container based on active view -->
+        <div class="space-y-6" id="todo-sidebar-forms">
+          <!-- Form for List Tab -->
+          <div id="form-box-list" class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80">
+            <h3 class="text-lg font-bold text-slate-800 mb-2 flex items-center gap-2">
+              <i data-lucide="plus" class="w-5 h-5 text-indigo-500"></i> 学習ToDo追加
+            </h3>
+            <form onsubmit="handleAddTodo(event)" class="space-y-4">
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">タスク名</label>
+                <input type="text" id="todo-title-input" placeholder="例: 英語問題集 P.20〜P.25" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" required>
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">科目</label>
+                <select id="todo-subject-select" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" required></select>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 mb-1">開始日</label>
+                  <input type="date" id="todo-startdate-input" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs focus:outline-none">
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 mb-1">終了日（期限）</label>
+                  <input type="date" id="todo-duedate-input" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs focus:outline-none">
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">予想時間 (分 / 任意)</label>
+                <input type="number" id="todo-time-input" min="5" max="600" step="5" placeholder="例: 30" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+              </div>
+
+              <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-xl transition text-sm flex items-center justify-center gap-2 shadow-sm">
+                <i data-lucide="plus-circle" class="w-4 h-4"></i> タスクを追加
+              </button>
+            </form>
+          </div>
+
+          <!-- Form for Schedule Tab (スケジュール用タスク管理) -->
+          <div id="form-box-schedule" class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80 hidden">
+            <h3 class="text-base font-bold text-slate-800 mb-2 flex items-center gap-2">
+              <i data-lucide="list-checks" class="w-5 h-5 text-indigo-500"></i> スケジュール用タスク
+            </h3>
+            <p class="text-xs text-slate-500 mb-4">ここで登録したタスクは、円グラフのスケジュール追加時に選択して利用できます。</p>
+            <form onsubmit="handleScheduleTaskAdd(event)" class="space-y-3">
+              <input type="hidden" id="sched-edit-task-id">
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">タスク名 / メモ</label>
+                <input type="text" id="sched-task-name" placeholder="例: 部活 / 自習 / 休憩" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs focus:outline-none" required>
+              </div>
+              <div class="flex items-center gap-3">
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 mb-1">カラー</label>
+                  <input type="color" id="sched-task-color" value="#3b82f6" class="w-12 h-9 rounded-lg cursor-pointer border border-slate-200 p-1">
+                </div>
+                <div class="flex-1">
+                  <label class="block text-xs font-semibold text-slate-600 mb-1">&nbsp;</label>
+                  <div class="flex gap-2">
+                    <button type="submit" id="sched-task-submit-btn" class="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-medium py-2.5 rounded-xl text-xs transition">
+                      追加
+                    </button>
+                    <button type="button" id="sched-task-cancel-btn" onclick="cancelScheduleTaskEdit()" class="hidden bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium px-3 py-2.5 rounded-xl text-xs transition">
+                      キャンセル
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </form>
+            <div id="schedule-custom-tasks-list" class="mt-4 space-y-1.5 max-h-48 overflow-y-auto pr-1"></div>
+          </div>
+        </div>
+
+        <div class="lg:col-span-2 space-y-4">
+          <!-- VIEW 1: LIST VIEW -->
+          <div id="todo-list-view" class="space-y-4">
+            <div class="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-200/85">
+              <div class="flex gap-1 text-xs font-medium bg-slate-100 p-1 rounded-lg">
+                <button onclick="setTodoFilter('all')" id="filter-all-btn" class="px-3 py-1.5 rounded-md bg-white shadow-sm text-indigo-600 font-semibold transition">すべて</button>
+                <button onclick="setTodoFilter('pending')" id="filter-pending-btn" class="px-3 py-1.5 rounded-md text-slate-600 transition">未完了</button>
+                <button onclick="setTodoFilter('completed')" id="filter-completed-btn" class="px-3 py-1.5 rounded-md text-slate-600 transition">完了</button>
+              </div>
+
+              <button onclick="clearCompletedTodos()" class="text-xs bg-rose-50 hover:bg-rose-100 text-rose-600 font-semibold transition px-3 py-1.5 rounded-lg border border-rose-200 flex items-center gap-1">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> 完了タスクを一括削除
+              </button>
+            </div>
+
+            <div id="todo-container" class="space-y-3"></div>
+
+            <div id="todo-empty" class="bg-white rounded-2xl p-8 text-center border border-slate-200/80 text-slate-400 text-sm hidden">
+              タスクが登録されていません。左のフォームから追加しましょう！
+            </div>
+          </div>
+
+          <!-- VIEW 2: PIE CHART SCHEDULE VIEW (今日・明日の円グラフスケジュール) -->
+          <div id="todo-schedule-view" class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm hidden space-y-6">
+            <div class="border-b border-slate-100 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 class="font-bold text-lg text-slate-800 flex items-center gap-2">
+                  <i data-lucide="pie-chart" class="w-5 h-5 text-indigo-500"></i> 円グラフによる24時間スケジュール
+                </h3>
+                <p class="text-xs text-slate-500 mt-0.5">予定の追加・編集が行えます</p>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <!-- Today Pie Box -->
+              <div class="bg-indigo-50/30 border border-indigo-100 rounded-2xl p-4 flex flex-col items-center space-y-4">
+                <div class="w-full flex items-center justify-between border-b border-indigo-100 pb-2">
+                  <span class="font-bold text-indigo-900 text-sm flex items-center gap-1.5">
+                    <i data-lucide="sun" class="w-4 h-4 text-amber-500"></i> 今日 (<span id="schedule-today-date-label"></span>)
+                  </span>
+                  <div class="flex items-center gap-2">
+                    <button onclick="copyScheduleToTomorrow()" class="text-xs bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium px-2.5 py-1.5 rounded-lg transition flex items-center gap-1" title="今日のスケジュールを明日にコピー">
+                      <i data-lucide="copy" class="w-3.5 h-3.5"></i> 明日にコピー
+                    </button>
+                    <button onclick="openScheduleModal('today')" class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-3 py-1.5 rounded-lg transition shadow-xs flex items-center gap-1">
+                      <i data-lucide="plus" class="w-3.5 h-3.5"></i> 予定を追加
+                    </button>
+                  </div>
+                </div>
+                <div class="w-64 h-64 relative">
+                  <canvas id="todayPieChart"></canvas>
+                </div>
+                <div id="schedule-today-list-text" class="w-full space-y-1.5 max-h-40 overflow-y-auto pr-1"></div>
+              </div>
+
+              <!-- Tomorrow Pie Box -->
+              <div class="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 flex flex-col items-center space-y-4">
+                <div class="w-full flex items-center justify-between border-b border-slate-200 pb-2">
+                  <span class="font-bold text-slate-800 text-sm flex items-center gap-1.5">
+                    <i data-lucide="sunrise" class="w-4 h-4 text-indigo-500"></i> 明日 (<span id="schedule-tomorrow-date-label"></span>)
+                  </span>
+                  <div class="flex items-center gap-2">
+                    <button onclick="openScheduleModal('tomorrow')" class="text-xs bg-slate-900 hover:bg-slate-800 text-white font-medium px-3 py-1.5 rounded-lg transition shadow-xs flex items-center gap-1">
+                      <i data-lucide="plus" class="w-3.5 h-3.5"></i> 予定を追加
+                    </button>
+                  </div>
+                </div>
+                <div class="w-64 h-64 relative">
+                  <canvas id="tomorrowPieChart"></canvas>
+                </div>
+                <div id="schedule-tomorrow-list-text" class="w-full space-y-1.5 max-h-40 overflow-y-auto pr-1"></div>
+              </div>
+            </div>
+
+            <!-- Schedule Templates / Saved Presets -->
+            <div class="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div class="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                <i data-lucide="bookmark" class="w-4 h-4 text-indigo-500"></i> 保存したスケジュールテンプレート
+              </div>
+              <div class="flex items-center gap-2 w-full sm:w-auto">
+                <input type="text" id="sched-preset-name" placeholder="テンプレート名 (例: 平日ルーティン)" class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none flex-1 sm:w-56">
+                <button onclick="saveCurrentScheduleAsPreset()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-3 py-2 rounded-xl text-xs transition whitespace-nowrap">
+                  今日の予定を保存
+                </button>
+              </div>
+            </div>
+            <div id="schedule-presets-list" class="flex flex-wrap gap-2 pt-2"></div>
+          </div>
+
+          <!-- VIEW 3: CALENDAR VIEW -->
+          <div id="todo-calendar-view" class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hidden space-y-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <h3 id="calendar-month-year" class="font-bold text-lg text-slate-800">2026年 8月</h3>
+                <p class="text-[11px] text-slate-400">日付をタップするとその日のタスク管理ができます</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <button onclick="changeCalendarMonth(-1)" class="p-2 hover:bg-slate-100 rounded-lg transition"><i data-lucide="chevron-left" class="w-5 h-5"></i></button>
+                <button onclick="resetCalendarToToday()" class="text-xs font-semibold text-indigo-600 px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition">今月</button>
+                <button onclick="changeCalendarMonth(1)" class="p-2 hover:bg-slate-100 rounded-lg transition"><i data-lucide="chevron-right" class="w-5 h-5"></i></button>
+              </div>
+            </div>
+
+            <div class="calendar-grid text-center text-xs font-semibold text-slate-400 border-b border-slate-100 pb-2">
+              <div class="text-rose-500">日</div>
+              <div>月</div>
+              <div>火</div>
+              <div>水</div>
+              <div>木</div>
+              <div>金</div>
+              <div class="text-indigo-500">土</div>
+            </div>
+
+            <div id="calendar-days-container" class="calendar-grid gap-1 min-h-[320px]"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: DASHBOARD -->
+    <section id="tab-dashboard" class="space-y-6 hidden">
+      <header>
+        <h2 class="text-2xl font-bold text-slate-900">ダッシュボード</h2>
+        <p class="text-slate-500 text-sm">あなたの学習データの分析と進捗</p>
+      </header>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 flex items-center gap-4">
+          <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
+            <i data-lucide="clock" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <div class="text-xs font-medium text-slate-500">本日の勉強時間</div>
+            <div class="text-2xl font-bold text-slate-800" id="kpi-today">0h 0m</div>
+          </div>
+        </div>
+
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 flex items-center gap-4">
+          <div class="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center">
+            <i data-lucide="calendar" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <div class="text-xs font-medium text-slate-500">今週の累計</div>
+            <div class="text-2xl font-bold text-slate-800" id="kpi-week">0h 0m</div>
+          </div>
+        </div>
+
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 flex items-center gap-4">
+          <div class="w-12 h-12 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center">
+            <i data-lucide="award" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <div class="text-xs font-medium text-slate-500">総学習時間</div>
+            <div class="text-2xl font-bold text-slate-800" id="kpi-total">0h 0m</div>
+          </div>
+        </div>
+
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 flex items-center gap-4">
+          <div class="w-12 h-12 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center">
+            <i data-lucide="flame" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <div class="text-xs font-medium text-slate-500">連続学習日数</div>
+            <div class="text-2xl font-bold text-slate-800" id="kpi-streak">0日</div>
+          </div>
+        </div>
+
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 flex items-center gap-4">
+          <div class="w-12 h-12 bg-orange-50 text-orange-600 rounded-xl flex items-center justify-center">
+            <i data-lucide="trophy" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <div class="text-xs font-medium text-slate-500">目標達成ストリーク</div>
+            <div class="text-2xl font-bold text-slate-800" id="kpi-goal-streak">0日</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+            <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
+              <i data-lucide="trending-up" class="w-5 h-5 text-indigo-500"></i> 科目別積み上げ学習時間
+            </h3>
+            <div class="bg-slate-100 p-1 rounded-lg flex text-xs font-medium self-start sm:self-auto">
+              <button id="chart-range-7days" onclick="setChartRange('7days')" class="px-3 py-1 rounded-md bg-white shadow-sm text-indigo-600 font-semibold transition">直近7日間</button>
+              <button id="chart-range-month" onclick="setChartRange('month')" class="px-3 py-1 rounded-md text-slate-600 transition">今月</button>
+              <button id="chart-range-all" onclick="setChartRange('all')" class="px-3 py-1 rounded-md text-slate-600 transition">全期間 (月別)</button>
+            </div>
+          </div>
+          <div class="h-64 relative">
+            <canvas id="weeklyChart"></canvas>
+          </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80 flex flex-col justify-between">
+          <div>
+            <h3 class="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
+              <i data-lucide="pie-chart" class="w-5 h-5 text-indigo-500"></i> 科目別比率
+            </h3>
+            <div class="h-56 relative flex items-center justify-center">
+              <canvas id="subjectChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Period Report Card -->
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
+            <i data-lucide="file-text" class="w-5 h-5 text-indigo-500"></i> 学習レポート
+          </h3>
+          <div class="flex items-center gap-3">
+            <div class="bg-slate-100 p-1 rounded-lg flex text-xs font-medium">
+              <button id="report-period-day" onclick="setReportPeriod('day')" class="px-3 py-1 rounded-md text-slate-600 transition">日ごと</button>
+              <button id="report-period-week" onclick="setReportPeriod('week')" class="px-3 py-1 rounded-md bg-white shadow-sm text-indigo-600 font-semibold transition">週ごと</button>
+              <button id="report-period-month" onclick="setReportPeriod('month')" class="px-3 py-1 rounded-md text-slate-600 transition">月ごと</button>
+            </div>
+            <span class="text-xs text-slate-400" id="weekly-report-range-label"></span>
+          </div>
+        </div>
+
+        <div id="weekly-report-streak-warning" class="hidden mb-4 bg-amber-50 border border-amber-200 text-amber-800 text-xs px-4 py-2.5 rounded-xl flex items-center gap-2">
+          <i data-lucide="alarm-clock" class="w-4 h-4 flex-shrink-0"></i>
+          <span id="weekly-report-streak-warning-text"></span>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+          <div class="bg-slate-50 rounded-xl p-4">
+            <div class="text-xs font-medium text-slate-500 mb-1" id="report-current-label">今週の合計</div>
+            <div class="text-2xl font-bold text-slate-800" id="weekly-report-this-week">0h 0m</div>
+            <div class="text-xs font-semibold mt-1" id="weekly-report-diff">-</div>
+          </div>
+          <div class="bg-slate-50 rounded-xl p-4">
+            <div class="text-xs font-medium text-slate-500 mb-1" id="report-previous-label">先週の合計</div>
+            <div class="text-2xl font-bold text-slate-500" id="weekly-report-last-week">0h 0m</div>
+          </div>
+        </div>
+
+        <div class="text-xs font-semibold text-slate-600 mb-2" id="report-breakdown-label">科目別内訳(今週)</div>
+        <div id="weekly-report-subject-breakdown" class="space-y-2"></div>
+        <div id="weekly-report-empty" class="hidden text-center text-slate-400 text-sm py-6">
+          この期間はまだ学習記録がありません。
+        </div>
+      </div>
+
+      <!-- Study Trends Card -->
+      <div id="trends-report-card" class="hidden bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80">
+        <h3 class="text-base font-bold text-slate-800 flex items-center gap-2 mb-4">
+          <i data-lucide="lightbulb" class="w-5 h-5 text-indigo-500"></i> 学習傾向
+        </h3>
+
+        <div id="trends-insight-list" class="space-y-2 mb-5"></div>
+
+        <div class="text-xs font-semibold text-slate-600 mb-2">曜日別の平均学習時間</div>
+        <div id="trends-weekday-breakdown" class="grid grid-cols-7 gap-1.5 items-end h-28"></div>
+      </div>
+    </section>
+
+    <!-- TAB 4: HISTORY -->
+    <section id="tab-history" class="space-y-6 hidden">
+      <header class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-2xl font-bold text-slate-900">学習履歴</h2>
+          <p class="text-slate-500 text-sm">これまでの全記録ログと実績</p>
+        </div>
+        <div class="bg-slate-200/80 p-1 rounded-xl flex text-xs font-medium">
+          <button id="hist-subtab-log-btn" onclick="setHistorySubTab('log')" class="px-4 py-2 rounded-lg transition bg-white text-indigo-600 shadow-sm font-semibold">
+            <i data-lucide="list" class="w-4 h-4 inline mr-1"></i>記録一覧
+          </button>
+          <button id="hist-subtab-achievements-btn" onclick="setHistorySubTab('achievements')" class="px-4 py-2 rounded-lg transition text-slate-600">
+            <i data-lucide="trophy" class="w-4 h-4 inline mr-1"></i>実績
+          </button>
+        </div>
+      </header>
+
+      <div id="hist-subtab-log-content" class="space-y-6">
+        <div class="flex flex-wrap items-center gap-2">
+          <select id="history-filter-subject" onchange="renderHistoryTable()" class="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-700 focus:outline-none shadow-sm">
+            <option value="all">すべての科目</option>
+          </select>
+          <input type="text" id="history-search-input" oninput="renderHistoryTable()" placeholder="メモで検索..." class="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-sm">
+          <div class="bg-slate-200/80 p-1 rounded-xl flex text-xs font-medium">
+            <button id="hist-filter-all" onclick="setHistoryFilter('all')" class="px-3 py-1.5 rounded-lg transition bg-white text-indigo-600 shadow-sm font-semibold">全期間</button>
+            <button id="hist-filter-today" onclick="setHistoryFilter('today')" class="px-3 py-1.5 rounded-lg transition text-slate-600">今日</button>
+            <button id="hist-filter-week" onclick="setHistoryFilter('week')" class="px-3 py-1.5 rounded-lg transition text-slate-600">今週</button>
+            <button id="hist-filter-month" onclick="setHistoryFilter('month')" class="px-3 py-1.5 rounded-lg transition text-slate-600">今月</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 flex items-center gap-4">
+            <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
+              <i data-lucide="clock" class="w-6 h-6"></i>
+            </div>
+            <div>
+              <div class="text-xs font-medium text-slate-500" id="history-period-label">選択期間の勉強時間</div>
+              <div class="text-2xl font-bold text-slate-800" id="history-period-time">0h 0m</div>
+            </div>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 flex items-center gap-4">
+            <div class="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center">
+              <i data-lucide="check-circle" class="w-6 h-6"></i>
+            </div>
+            <div>
+              <div class="text-xs font-medium text-slate-500">記録セッション数</div>
+              <div class="text-2xl font-bold text-slate-800" id="history-period-count">0回</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm text-slate-600">
+              <thead class="bg-slate-50 text-xs text-slate-400 uppercase font-semibold border-b border-slate-200">
+                <tr>
+                  <th class="py-3.5 px-6">日付</th>
+                  <th class="py-3.5 px-6">科目</th>
+                  <th class="py-3.5 px-6">学習時間</th>
+                  <th class="py-3.5 px-6">メモ</th>
+                  <th class="py-3.5 px-6 text-right">操作</th>
+                </tr>
+              </thead>
+              <tbody id="history-tbody" class="divide-y divide-slate-100"></tbody>
+            </table>
+          </div>
+          <div id="history-empty" class="p-8 text-center text-slate-400 text-sm hidden">
+            指定された条件の学習記録はありません。
+          </div>
+        </div>
+      </div>
+
+      <div id="hist-subtab-achievements-content" class="hidden space-y-6">
+        <div class="flex items-center justify-end">
+          <div class="bg-white border border-slate-200/80 px-4 py-2 rounded-xl shadow-sm flex items-center gap-2">
+            <i data-lucide="trophy" class="w-5 h-5 text-amber-500"></i>
+            <span class="text-sm font-bold text-slate-800" id="achievements-count">0 / 0 解除</span>
+          </div>
+        </div>
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80">
+          <div id="achievements-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 5: SUBJECTS & GOALS -->
+    <section id="tab-subjects" class="space-y-6 hidden">
+      <header>
+        <h2 class="text-2xl font-bold text-slate-900">科目・目標設定</h2>
+        <p class="text-slate-500 text-sm">管理する科目と1日の目標時間を設定します</p>
+      </header>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80">
+          <h3 class="text-lg font-bold text-slate-800 mb-2 flex items-center gap-2">
+            <i data-lucide="target" class="w-5 h-5 text-indigo-500"></i> 1日の目標学習時間
+          </h3>
+          <p class="text-xs text-slate-500 mb-6">ダッシュボードやサイドバーの進捗バーに反映されます</p>
+
+          <form onsubmit="handleGoalSubmit(event)" class="space-y-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">目標時間 (時間)</label>
+              <input type="number" id="goal-input" step="0.5" min="0.5" max="24" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" required>
+            </div>
+            <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-6 py-2.5 rounded-xl text-sm transition">
+              目標を保存
+            </button>
+          </form>
+        </div>
+
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80">
+          <h3 class="text-lg font-bold text-slate-800 mb-2 flex items-center gap-2">
+            <i data-lucide="folder-plus" class="w-5 h-5 text-indigo-500"></i> 科目の追加
+          </h3>
+          <p class="text-xs text-slate-500 mb-6">新しい学習カテゴリを作成します</p>
+
+          <form onsubmit="handleAddSubject(event)" class="space-y-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">科目名</label>
+              <input type="text" id="subject-name-input" placeholder="例: 英語、プログラミング" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" required>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">テーマカラー</label>
+              <div class="flex items-center gap-3">
+                <input type="color" id="subject-color-input" value="#6366f1" class="w-12 h-10 rounded-lg cursor-pointer border border-slate-200 p-1">
+                <span class="text-xs text-slate-400">グラフ等の色</span>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">週間目標 (分 / 任意)</label>
+              <input type="number" id="subject-weekly-goal-input" min="0" step="10" placeholder="例: 300 (未設定なら空欄のまま)" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+            </div>
+            <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white font-medium px-6 py-2.5 rounded-xl text-sm transition">
+              科目をつくる
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80">
+        <h3 class="text-lg font-bold text-slate-800 mb-4">登録済み科目一覧</h3>
+        <div id="subject-list" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3"></div>
+      </div>
+
+      <!-- Cloud Background Auto-Sync Section -->
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80 space-y-4">
+        <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+          <i data-lucide="cloud-sync" class="w-5 h-5 text-indigo-500"></i> 自動バックグラウンド同期
+        </h3>
+        <p class="text-xs text-slate-500">普段のデータは高速なブラウザ内ストレージで完結し、裏で自動的にFirestoreとリアルタイム同期します。別の端末と共有する場合は同じ「同期ルームID」を入力してください。</p>
+        
+        <div id="sync-auth-ui" class="space-y-4">
+          <div class="flex flex-col sm:flex-row items-center gap-3">
+            <input type="text" id="sync-room-input" placeholder="同期ルームID (例: room-123)" class="w-full sm:w-48 bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+            <input type="password" id="sync-password-input" placeholder="暗号化パスワード" class="w-full sm:w-48 bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+          </div>
+          <div class="flex flex-wrap gap-3">
+            <button onclick="createSyncRoom()" id="sync-create-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-4 py-2 rounded-xl text-sm transition">新規作成</button>
+            <button onclick="joinSyncRoom()" id="sync-join-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-4 py-2 rounded-xl text-sm transition">参加する</button>
+            <button onclick="disconnectSyncRoom()" id="sync-disconnect-btn" class="hidden bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium px-4 py-2 rounded-xl text-sm transition">連携解除</button>
+          </div>
+          <div class="text-xs text-emerald-600 font-semibold flex items-center gap-1.5" id="sync-status-indicator">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span id="sync-status-text">ローカル保存稼働中</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Backup & Restore Section -->
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/80">
+        <h3 class="text-lg font-bold text-slate-800 mb-2 flex items-center gap-2">
+          <i data-lucide="database" class="w-5 h-5 text-indigo-500"></i> セーブデータのバックアップ・復元
+        </h3>
+        <p class="text-xs text-slate-500 mb-4">ファイル（JSON形式）としてデータを書き出したり読み込んだりすることもできます。</p>
+        <div class="flex flex-wrap items-center gap-3">
+          <button onclick="exportBackupData()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5 py-2.5 rounded-xl text-sm transition flex items-center gap-2 shadow-sm">
+            <i data-lucide="download" class="w-4 h-4"></i> データを書き出す (バックアップ)
+          </button>
+          <label class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-5 py-2.5 rounded-xl text-sm transition flex items-center gap-2 cursor-pointer shadow-sm">
+            <i data-lucide="upload" class="w-4 h-4"></i> データを読み込む (復元)
+            <input type="file" id="import-file-input" accept=".json" onchange="importBackupData(event)" class="hidden">
+          </label>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Mobile Bottom Navigation Bar -->
+  <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 text-slate-400 flex items-center justify-around py-2 z-30 shadow-lg">
+    <button onclick="switchTab('timer')" id="mob-nav-timer" class="flex flex-col items-center gap-1 text-[10px] font-medium text-indigo-400">
+      <i data-lucide="timer" class="w-5 h-5"></i>
+      <span>タイマー</span>
+    </button>
+    <button onclick="switchTab('problem')" id="mob-nav-problem" class="flex flex-col items-center gap-1 text-[10px] font-medium hover:text-slate-100">
+      <i data-lucide="timer" class="w-5 h-5"></i>
+      <span>演習</span>
+    </button>
+    <button onclick="switchTab('todos')" id="mob-nav-todos" class="flex flex-col items-center gap-1 text-[10px] font-medium hover:text-slate-100">
+      <i data-lucide="check-square" class="w-5 h-5"></i>
+      <span>ToDo</span>
+    </button>
+    <button onclick="switchTab('dashboard')" id="mob-nav-dashboard" class="flex flex-col items-center gap-1 text-[10px] font-medium hover:text-slate-100">
+      <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+      <span>分析</span>
+    </button>
+    <button onclick="switchTab('history')" id="mob-nav-history" class="flex flex-col items-center gap-1 text-[10px] font-medium hover:text-slate-100">
+      <i data-lucide="history" class="w-5 h-5"></i>
+      <span>履歴</span>
+    </button>
+    <button onclick="switchTab('subjects')" id="mob-nav-subjects" class="flex flex-col items-center gap-1 text-[10px] font-medium hover:text-slate-100">
+      <i data-lucide="folder-kanban" class="w-5 h-5"></i>
+      <span>設定</span>
+    </button>
+  </nav>
+
+  <!-- Schedule Add/Edit Modal -->
+  <div id="schedule-modal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+          <i data-lucide="clock" class="w-5 h-5 text-indigo-500"></i> <span id="schedule-modal-title">予定の追加</span>
+        </h3>
+        <button onclick="closeScheduleModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <form onsubmit="handleScheduleModalSubmit(event)" class="space-y-4">
+        <input type="hidden" id="schedule-modal-day-type">
+        <input type="hidden" id="schedule-modal-edit-id">
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">開始時間</label>
+            <select id="schedule-modal-start" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"></select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">終了時間</label>
+            <select id="schedule-modal-end" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"></select>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">スケジュール用タスクから選ぶ (任意)</label>
+          <select id="schedule-modal-custom-task-select" onchange="fillScheduleFromCustomTask(this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs focus:outline-none mb-2">
+            <option value="">-- スケジュール用タスクから選択 --</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">予定内容（メモなど）</label>
+          <input type="text" id="schedule-modal-content" placeholder="例: 数学の問題集 P.10〜P.15" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" required>
+        </div>
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <button type="button" onclick="closeScheduleModal()" class="px-4 py-2 rounded-xl text-sm bg-slate-100 hover:bg-slate-200 text-slate-600 transition">キャンセル</button>
+          <button type="submit" id="schedule-modal-submit-btn" class="px-5 py-2 rounded-xl text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-medium transition shadow-sm">予定を追加する</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Day Detail Modal -->
+  <div id="day-detail-modal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+          <i data-lucide="calendar" class="w-5 h-5 text-indigo-500"></i> <span id="modal-date-title">2026-08-07</span> のタスク
+        </h3>
+        <button onclick="closeDayDetailModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+
+      <form onsubmit="handleModalAddTodo(event)" class="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 space-y-3">
+        <input type="hidden" id="modal-target-date">
+        <div class="text-xs font-bold text-slate-700">この日のタスクを追加</div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <input type="text" id="modal-todo-title" placeholder="タスク名を入力..." class="bg-white border border-slate-200 rounded-lg p-2 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none" required>
+          <select id="modal-todo-subject" class="bg-white border border-slate-200 rounded-lg p-2 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none" required></select>
+        </div>
+        <div class="flex items-center justify-between gap-2">
+          <input type="number" id="modal-todo-time" min="5" max="600" step="5" placeholder="予想分" class="w-24 bg-white border border-slate-200 rounded-lg p-2 text-xs focus:outline-none">
+          <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-4 py-2 rounded-lg text-xs transition">追加する</button>
+        </div>
+      </form>
+
+      <div id="modal-todo-list" class="space-y-2"></div>
+    </div>
+  </div>
+
+  <!-- Edit Todo Modal -->
+  <div id="edit-todo-modal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+      <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+        <i data-lucide="edit-3" class="w-5 h-5 text-indigo-500"></i> タスクの編集
+      </h3>
+      <form onsubmit="handleEditTodoSubmit(event)" class="space-y-3">
+        <input type="hidden" id="edit-todo-id">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">タスク名</label>
+          <input type="text" id="edit-todo-title" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" required>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">科目</label>
+          <select id="edit-todo-subject" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" required></select>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">開始日</label>
+            <input type="date" id="edit-todo-startdate" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">終了日（期限）</label>
+            <input type="date" id="edit-todo-duedate" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs focus:outline-none">
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">予想時間 (分)</label>
+          <input type="number" id="edit-todo-time" min="5" max="600" step="5" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+        </div>
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <button type="button" onclick="closeEditTodoModal()" class="px-4 py-2 rounded-xl text-sm bg-slate-100 hover:bg-slate-200 text-slate-600 transition">キャンセル</button>
+          <button type="submit" class="px-5 py-2 rounded-xl text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-medium transition shadow-sm">変更を保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Edit Subject Modal -->
+  <div id="edit-subject-modal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4">
+      <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+        <i data-lucide="folder-pen" class="w-5 h-5 text-indigo-500"></i> 科目の編集
+      </h3>
+      <form onsubmit="handleEditSubjectSubmit(event)" class="space-y-3">
+        <input type="hidden" id="edit-subject-id">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">科目名</label>
+          <input type="text" id="edit-subject-name" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" required>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">テーマカラー</label>
+          <div class="flex items-center gap-3">
+            <input type="color" id="edit-subject-color" class="w-12 h-10 rounded-lg cursor-pointer border border-slate-200 p-1">
+            <span class="text-xs text-slate-400">グラフ等の色</span>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">週間目標 (分 / 任意)</label>
+          <input type="number" id="edit-subject-weekly-goal" min="0" step="10" placeholder="未設定なら空欄のまま" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+        </div>
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <button type="button" onclick="closeEditSubjectModal()" class="px-4 py-2 rounded-xl text-sm bg-slate-100 hover:bg-slate-200 text-slate-600 transition">キャンセル</button>
+          <button type="submit" class="px-5 py-2 rounded-xl text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-medium transition shadow-sm">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Template Choice Modal -->
+  <div id="preset-load-modal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4 text-center">
+      <h3 class="text-lg font-bold text-slate-800">テンプレートの読み込み</h3>
+      <p class="text-xs text-slate-500">「<span id="preset-load-name-label"></span>」をどちらに反映させますか？</p>
+      <input type="hidden" id="preset-load-target-name">
+      <div class="grid grid-cols-2 gap-3 pt-2">
+        <button onclick="confirmLoadPreset('today')" class="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-xl text-xs transition">
+          今日に読み込む
+        </button>
+        <button onclick="confirmLoadPreset('tomorrow')" class="bg-slate-900 hover:bg-slate-800 text-white font-medium py-3 rounded-xl text-xs transition">
+          明日に読み込む
+        </button>
+      </div>
+      <button onclick="closePresetLoadModal()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 py-2.5 rounded-xl text-xs transition mt-1">
+        キャンセル
+      </button>
+    </div>
+  </div>
+
+  <!-- Mini Floating Timer Widget -->
+  <div id="floating-timer" class="hidden fixed bottom-16 md:bottom-4 right-4 bg-slate-900/95 backdrop-blur text-white px-4 py-3 rounded-2xl shadow-2xl border border-slate-700/80 z-50 flex items-center gap-4 transition-all duration-300">
+    <div class="flex items-center gap-2">
+      <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" id="floating-dot"></span>
+      <div>
+        <div class="text-[10px] text-slate-400 font-medium" id="floating-label">計測中</div>
+        <div class="text-lg font-mono font-bold tracking-tight text-indigo-300" id="floating-display">00:00:00</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-1.5 border-l border-slate-700 pl-3">
+      <button onclick="switchTab('timer')" class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-xl font-medium transition flex items-center gap-1">
+        <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i> 画面へ
+      </button>
+    </div>
+  </div>
+
+  <div id="toast" class="fixed bottom-20 md:bottom-5 right-5 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-xl flex items-center gap-3 transition-all duration-300 transform translate-y-20 opacity-0 z-50 pointer-events-none">
+    <i data-lucide="check-circle" class="w-5 h-5 text-emerald-400"></i>
+    <span id="toast-message" class="text-sm font-medium">通知メッセージ</span>
+  </div>
+
+  <!-- Offline Indicator Banner -->
+  <div id="offline-indicator" class="hidden fixed bottom-20 md:bottom-5 left-5 z-40 bg-slate-900/95 text-amber-300 border border-amber-500/40 px-3.5 py-2 rounded-xl shadow-xl backdrop-blur text-xs flex items-center gap-2.5 transition-all duration-300 animate-in fade-in">
+    <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse flex-shrink-0"></span>
+    <span class="font-medium">オフライン動作中 (記録は端末に安全に保存されます)</span>
+  </div>
+
+  <!-- iOS PWA Install Guide Modal -->
+  <div id="ios-install-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+    <div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl text-slate-800 space-y-4">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <h3 class="font-bold text-base flex items-center gap-2">
+          <i data-lucide="smartphone" class="w-5 h-5 text-indigo-600"></i>
+          <span>iPhone / iPad に追加</span>
+        </h3>
+        <button onclick="closeIOSInstallModal()" class="text-slate-400 hover:text-slate-600 font-bold text-lg p-1">&times;</button>
+      </div>
+      <p class="text-xs text-slate-600 leading-relaxed">
+        Safariの画面下部にある <strong>共有ボタン</strong>（四角から上矢印のアイコン）をタップし、メニューから <strong>「ホーム画面に追加」</strong> を選択すると、オフラインでもフルスクリーンで起動できるようになります。
+      </p>
+      <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-3 text-xs text-indigo-800 flex items-center gap-2">
+        <i data-lucide="check-circle-2" class="w-4 h-4 text-indigo-600 flex-shrink-0"></i>
+        <span>通信不要でタイマーやToDoをそのまま使用可能</span>
+      </div>
+      <button onclick="closeIOSInstallModal()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 rounded-xl text-xs transition">
+        閉じる
+      </button>
+    </div>
+  </div>
+
+  <audio id="alarm-sound" src="timer-sound.mp3" preload="auto"></audio>
+
+  <!-- Script and Logic -->
+
+  <!-- Script and Logic (機能ごとにファイル分割) -->
+  <script src="./js/utils.js"></script>
+  <script src="./js/state.js"></script>
+  <script type="module" src="./js/sync.js"></script>
+  <script src="./js/ui.js"></script>
+  <script src="./js/timer.js"></script>
+  <script src="./js/todos.js"></script>
+  <script src="./js/dashboard.js"></script>
+  <script src="./js/subjects.js"></script>
+  <script src="./js/achievements.js"></script>
+  <script src="./js/main.js"></script>
+</body>
+</html>
